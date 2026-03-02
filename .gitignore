@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Checkpoints (training intermediate checkpoints)
+checkpoints/
+
+# Comparison models (only keep main model)
+comparison model/
+
+# Large log data (keep images and text files)
+logs/**/*.npy
+logs/**/*.pth
+
+# IDE
+.vscode/
+.claude/
+
+# Archives
+*.7z
