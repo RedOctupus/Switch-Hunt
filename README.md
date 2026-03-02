@@ -269,40 +269,6 @@ CHECKPOINT_CONFIG = {
 }
 ```
 
-## Common Issues and Fixes
-
-### 1. 内存泄漏修复 (V8.23)
-```python
-# 修复前
-self.losses = []  # 无界列表
-
-# 修复后
-self.losses = deque(maxlen=50000)  # 有界队列
-```
-
-### 2. Dropout/BN不确定性修复 (V8.23)
-```python
-# 修复前
-q_value = self.Qnet(state)  # train()模式下有随机性
-
-# 修复后
-self.Qnet.eval()
-with torch.no_grad():
-    q_value = self.Qnet(state)
-self.Qnet.train()
-```
-
-### 3. 离散化训练步骤 (V8.23)
-```python
-# 修复前: step_train_ghost每帧调用，奖励计算错误
-
-# 修复后: step_discrete每次完成完整格间移动
-while ghost.is_moving:
-    ghost._continue_move(dt)
-    # ... 物理推进
-# 然后计算奖励
-```
-
 ## Development Workflow
 
 1. **修改配置**: 编辑 `config_v8.py`
@@ -338,11 +304,3 @@ verify_v8.py
     └── config_v8.py
 ```
 
-## Notes for AI Agents
-
-1. **不要修改测试文件**: `verify_v8.py` 是验证工具，保持原样
-2. **配置优先**: 优先修改 `config_v8.py` 而非硬编码参数
-3. **版本标签**: 新增代码添加版本标签（如 `[V8.26]`）
-4. **中文注释**: 保持中文注释和文档字符串
-5. **检查点兼容**: 修改模型结构时考虑检查点兼容性
-6. **离散化步骤**: 训练相关修改应在 `step_discrete()` 中进行
