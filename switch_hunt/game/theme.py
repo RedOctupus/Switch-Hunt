@@ -1,6 +1,7 @@
 """统一视觉主题：配色、字体缓存、通用绘制工具。"""
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Tuple, Optional, List
 
@@ -69,16 +70,46 @@ def with_alpha(color: Color, alpha: int) -> ColorA:
 
 @lru_cache(maxsize=32)
 def get_font(size: int, bold: bool = False) -> pygame.font.Font:
-    """优先中文字体，失败回退默认字体。"""
-    candidates = ("microsoftyahei", "simhei", "noto sans cjk sc", "segoe ui")
-    for name in candidates:
+    """加载可显示中文的字体。
+
+    优先按文件路径加载（绕过部分 Windows 上 pygame.SysFont 扫描失败导致乱码），
+    再回退 SysFont，最后才用默认字体。
+    """
+    windir = os.environ.get("WINDIR", r"C:\Windows")
+    fonts_dir = os.path.join(windir, "Fonts")
+    file_candidates = (
+        ("msyhbd.ttc", True),   # 微软雅黑 Bold
+        ("msyh.ttc", False),    # 微软雅黑
+        ("simhei.ttf", False),  # 黑体
+        ("msjh.ttc", False),    # 微软正黑体
+        ("Deng.ttf", False),    # 等线
+        ("simsun.ttc", False),  # 宋体
+        ("simkai.ttf", False),
+        ("simfang.ttf", False),
+    )
+
+    # bold 时优先粗体文件，否则普通文件在前
+    ordered = sorted(file_candidates, key=lambda item: 0 if item[1] == bold else 1)
+    for filename, _is_bold in ordered:
+        path = os.path.join(fonts_dir, filename)
+        if not os.path.isfile(path):
+            continue
+        try:
+            return pygame.font.Font(path, size)
+        except Exception:
+            continue
+
+    # SysFont 在部分环境会因字体枚举异常而失败/回退到无中文默认字体
+    for name in ("microsoftyahei", "msyh", "simhei", "simsun", "dengxian"):
         try:
             font = pygame.font.SysFont(name, size, bold=bold)
-            # SysFont 在找不到时也可能返回默认字体，简单探测一下
-            if font is not None:
+            # 探测是否真能渲染中文（默认字体常画成方框/空白）
+            probe = font.render("测", True, (255, 255, 255))
+            if probe.get_width() > 2:
                 return font
         except Exception:
             continue
+
     return pygame.font.Font(None, size)
 
 
