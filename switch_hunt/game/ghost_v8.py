@@ -233,34 +233,49 @@ class DQNGhostV8(Ghost):
     
     def render(self, screen, camera_offset=(0, 0)):
         """V8: 渲染网格对齐的鬼"""
+        from switch_hunt.game import theme as T
+
         screen_x = int(self.pos[0] + camera_offset[0])
         screen_y = int(self.pos[1] + camera_offset[1])
-        
-        if self.state == GhostState.STUNNED:
-            color = COLOR_BLUE
-        else:
-            color = COLOR_RED
-        
-        pygame.draw.circle(screen, color, (screen_x, screen_y), self.radius)
-        pygame.draw.circle(screen, COLOR_WHITE, (screen_x, screen_y), self.radius, 2)
-        
-        if self.use_dqn:
-            font = pygame.font.Font(None, 16)
-            text = font.render("DQN", True, COLOR_WHITE)
-            screen.blit(text, (screen_x - 10, screen_y - 25))
-        
-        if self.planned_direction is not None:
-            arrow_length = 20
-            if self.planned_direction == 0:
-                end_y = screen_y - arrow_length
-                pygame.draw.line(screen, (0, 255, 0), (screen_x, screen_y), (screen_x, end_y), 3)
-            elif self.planned_direction == 1:
-                end_y = screen_y + arrow_length
-                pygame.draw.line(screen, (0, 255, 0), (screen_x, screen_y), (screen_x, end_y), 3)
-            elif self.planned_direction == 2:
-                end_x = screen_x - arrow_length
-                pygame.draw.line(screen, (0, 255, 0), (screen_x, screen_y), (end_x, screen_y), 3)
-            elif self.planned_direction == 3:
-                end_x = screen_x + arrow_length
-                pygame.draw.line(screen, (0, 255, 0), (screen_x, screen_y), (end_x, screen_y), 3)
+        stunned = self.state == GhostState.STUNNED
+
+        body = T.GHOST_STUN_BODY if stunned else T.GHOST_BODY
+        core = T.GHOST_STUN_CORE if stunned else T.GHOST_CORE
+        outline = T.ACCENT_STUN if stunned else T.GHOST_OUTLINE
+
+        # 外晕：正常血红、定身冰蓝
+        T.draw_soft_glow(
+            screen, (screen_x, screen_y),
+            self.radius + (14 if stunned else 10),
+            body,
+            strength=0.4 if stunned else 0.32,
+            rings=8,
+        )
+
+        # 幽灵体：略扁椭圆感用双圆叠
+        pygame.draw.circle(screen, outline, (screen_x, screen_y), self.radius)
+        pygame.draw.circle(screen, body, (screen_x, screen_y), self.radius - 2)
+        pygame.draw.circle(
+            screen, core,
+            (screen_x, screen_y - self.radius // 4),
+            max(4, self.radius // 3),
+        )
+
+        # 眼睛
+        eye_y = screen_y - 2
+        eye_dx = self.radius // 3
+        eye_r = 3 if not stunned else 2
+        eye_color = (40, 10, 10) if not stunned else (220, 240, 255)
+        pygame.draw.circle(screen, eye_color, (screen_x - eye_dx, eye_y), eye_r)
+        pygame.draw.circle(screen, eye_color, (screen_x + eye_dx, eye_y), eye_r)
+        if not stunned:
+            pygame.draw.circle(screen, (255, 220, 180), (screen_x - eye_dx + 1, eye_y - 1), 1)
+            pygame.draw.circle(screen, (255, 220, 180), (screen_x + eye_dx + 1, eye_y - 1), 1)
+
+        # 定身：冰裂纹短线
+        if stunned:
+            for ang in (0.4, 1.2, 2.1, 3.5, 4.8):
+                ex = screen_x + int(math.cos(ang) * (self.radius - 3))
+                ey = screen_y + int(math.sin(ang) * (self.radius - 3))
+                pygame.draw.line(screen, T.GHOST_STUN_CORE, (screen_x, screen_y), (ex, ey), 1)
 

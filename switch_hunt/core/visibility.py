@@ -1,12 +1,16 @@
 """迷雾 / 视野系统。"""
 from __future__ import annotations
 
-from typing import Set, Tuple
+import math
+from typing import Set, Tuple, TYPE_CHECKING
 
 import pygame
 
 from switch_hunt.constants import TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, COLOR_BLACK
 from switch_hunt.utils import pixel_to_grid
+
+if TYPE_CHECKING:
+    from switch_hunt.core.map import Map
 
 class VisibilitySystem:
     """

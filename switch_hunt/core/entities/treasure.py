@@ -1,6 +1,7 @@
 """宝藏实体。"""
 from __future__ import annotations
 
+import math
 from typing import Tuple
 
 import pygame
@@ -78,27 +79,58 @@ class Treasure:
         if self.collected:
             return
 
-        # 计算动画偏移
-        float_offset = math.sin(self.animation_offset) * 3
+        from switch_hunt.game import theme as T
+
+        float_offset = math.sin(self.animation_offset) * 4
+        pulse = 0.5 + 0.5 * math.sin(self.animation_offset * 2.2)
 
         screen_x = int(self.pixel_pos[0] + camera_offset[0])
         screen_y = int(self.pixel_pos[1] + camera_offset[1] + float_offset)
 
-        # 绘制宝藏（菱形）
+        # 柔光底座
+        T.draw_soft_glow(
+            screen, (screen_x, screen_y),
+            self.radius + 10 + int(4 * pulse),
+            T.TREASURE_GLOW,
+            strength=0.28 + 0.12 * pulse,
+            rings=7,
+        )
+
+        # 外层菱形
+        outer = self.radius + 2
+        outer_pts = [
+            (screen_x, screen_y - outer),
+            (screen_x + outer, screen_y),
+            (screen_x, screen_y + outer),
+            (screen_x - outer, screen_y),
+        ]
+        pygame.draw.polygon(screen, T.TREASURE_EDGE, outer_pts)
+
+        # 主菱形
         points = [
             (screen_x, screen_y - self.radius),
             (screen_x + self.radius, screen_y),
             (screen_x, screen_y + self.radius),
             (screen_x - self.radius, screen_y),
         ]
-        pygame.draw.polygon(screen, COLOR_GOLD, points)
-        pygame.draw.polygon(screen, COLOR_YELLOW, points, 2)
+        pygame.draw.polygon(screen, T.TREASURE_CORE, points)
 
-        # 绘制闪光效果
-        sparkle_size = 3 + int(math.sin(self.animation_offset * 2) * 2)
-        pygame.draw.circle(screen, COLOR_WHITE,
-                          (screen_x - self.radius // 2, screen_y - self.radius // 2),
-                          sparkle_size)
+        # 内高光
+        inner = max(3, self.radius // 2)
+        inner_pts = [
+            (screen_x, screen_y - inner),
+            (screen_x + inner, screen_y),
+            (screen_x, screen_y + inner),
+            (screen_x - inner, screen_y),
+        ]
+        pygame.draw.polygon(screen, (255, 245, 200), inner_pts)
+
+        sparkle_size = 2 + int(pulse * 2)
+        pygame.draw.circle(
+            screen, COLOR_WHITE,
+            (screen_x - self.radius // 2, screen_y - self.radius // 2),
+            sparkle_size,
+        )
 
 
 # =============================================================================

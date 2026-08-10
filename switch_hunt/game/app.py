@@ -34,19 +34,17 @@ from switch_hunt.game.sound import SoundManager
 from switch_hunt.game.player_v8 import PlayerV8
 from switch_hunt.game.ghost_v8 import DQNGhostV8
 from switch_hunt.game.treasure_v8 import TreasureV8
-
-COLOR_WALL_BRIGHT = (100, 100, 120)
-COLOR_WALL_BORDER_BRIGHT = (130, 130, 150)
+from switch_hunt.game import theme as T
 
 if os.environ.get("DQN_TRAINING") != "1":
-    print("[V8] Loading Switch Hunt v8.0 - Grid-Aligned DQN Training")
+    print("[V8] Loading Switch Hunt — polished playable build")
 
 class GameV8(GameManager):
     """V8游戏管理器 - 完整游戏功能"""
     
     def __init__(self):
         super().__init__()
-        pygame.display.set_caption("开关猎杀 v8.0 - 网格对齐DQN训练")
+        pygame.display.set_caption("开关猎杀 — Switch Hunt")
         
         self.ui_system = UISystem()
         self.player_ai_enabled = False
@@ -56,6 +54,9 @@ class GameV8(GameManager):
 
         self.treasures_collected = 0
         self.camera_offset = (0, 0)
+        self._ui_time = 0.0
+        self._light_mask_cache_r = -1
+        self._light_mask = None
 
         self.sound = SoundManager()
         # 用于检测状态跳变以触发一次性音效
@@ -237,6 +238,7 @@ class GameV8(GameManager):
         running = True
         while running:
             dt = self.clock.tick(FPS) / 1000.0
+            self._ui_time += dt
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -407,24 +409,29 @@ class GameV8(GameManager):
     
     def _render_v8(self):
         """V8: 游戏画面渲染"""
-        self.screen.fill(COLOR_BLACK)
-        
+        self.screen.fill(T.BG_DEEP)
+
+        ox, oy = self.camera_offset
         for y in range(self.game_map.height):
             for x in range(self.game_map.width):
-                rect = pygame.Rect(
-                    x * TILE_SIZE + self.camera_offset[0],
-                    y * TILE_SIZE + self.camera_offset[1],
-                    TILE_SIZE, TILE_SIZE
-                )
+                px = x * TILE_SIZE + ox
+                py = y * TILE_SIZE + oy
+                rect = pygame.Rect(px, py, TILE_SIZE, TILE_SIZE)
                 if self.game_map.is_wall(x, y):
-                    pygame.draw.rect(self.screen, COLOR_WALL_BRIGHT, rect)
-                    pygame.draw.rect(self.screen, COLOR_WALL_BORDER_BRIGHT, rect, 2)
+                    # 石墙：填充 + 顶面高光 + 暗边
+                    pygame.draw.rect(self.screen, T.WALL_FILL, rect)
+                    pygame.draw.line(self.screen, T.WALL_TOP, (px, py), (px + TILE_SIZE - 1, py), 2)
+                    pygame.draw.line(self.screen, T.WALL_TOP, (px, py), (px, py + TILE_SIZE - 1), 1)
+                    pygame.draw.rect(self.screen, T.WALL_EDGE, rect, 1)
                 else:
-                    pygame.draw.rect(self.screen, (40, 40, 50), rect)
-        
+                    # 棋盘微差地板 + 细缝
+                    floor = T.FLOOR_A if (x + y) % 2 == 0 else T.FLOOR_B
+                    pygame.draw.rect(self.screen, floor, rect)
+                    pygame.draw.rect(self.screen, T.FLOOR_LINE, rect, 1)
+
         for treasure in self.treasures:
             treasure.render(self.screen, self.camera_offset)
-        
+
         for ghost in self.ghosts:
             # [V8.26] 鬼只要进入光源范围（视野半径）就显形，不限于强化状态
             if getattr(self.ui_system, 'cheat_mode', False):
@@ -440,245 +447,280 @@ class GameV8(GameManager):
 
         if self.show_ghost_path:
             self._render_ghost_paths()
-        
+
         self.player.render(self.screen, self.camera_offset)
-        
+
         if not getattr(self.ui_system, 'cheat_mode', False):
             self._render_fog_v8()
-    
+
     def _render_ghost_paths(self):
         """渲染鬼的A*路径"""
         for ghost in self.ghosts:
             if not ghost.current_path:
                 continue
-            
+
             path_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            
+
             for grid_x, grid_y in ghost.current_path:
                 rect = pygame.Rect(
                     grid_x * TILE_SIZE + self.camera_offset[0] + 8,
                     grid_y * TILE_SIZE + self.camera_offset[1] + 8,
                     TILE_SIZE - 16, TILE_SIZE - 16
                 )
-                pygame.draw.rect(path_surface, (0, 255, 255, 128), rect, border_radius=4)
-            
+                pygame.draw.rect(path_surface, (*T.ACCENT_INFO, 100), rect, border_radius=4)
+
             if len(ghost.current_path) > 1:
                 points = []
                 for grid_x, grid_y in ghost.current_path:
                     px = grid_x * TILE_SIZE + TILE_SIZE // 2 + self.camera_offset[0]
                     py = grid_y * TILE_SIZE + TILE_SIZE // 2 + self.camera_offset[1]
                     points.append((px, py))
-                
+
                 if len(points) > 1:
-                    pygame.draw.lines(path_surface, (255, 255, 255, 100), False, points, 2)
-            
+                    pygame.draw.lines(path_surface, (255, 255, 255, 90), False, points, 2)
+
             if ghost.current_path:
                 target = ghost.current_path[-1]
                 tx = target[0] * TILE_SIZE + TILE_SIZE // 2 + self.camera_offset[0]
                 ty = target[1] * TILE_SIZE + TILE_SIZE // 2 + self.camera_offset[1]
-                pygame.draw.circle(path_surface, (255, 0, 0, 180), (tx, ty), 6)
+                pygame.draw.circle(path_surface, (*T.ACCENT_DANGER, 180), (tx, ty), 6)
                 pygame.draw.circle(path_surface, (255, 255, 255, 200), (tx, ty), 6, 2)
-            
+
             self.screen.blit(path_surface, (0, 0))
-    
+
     def _render_fog_v8(self):
-        """V8: 渲染迷雾"""
+        """柔边径向迷雾 + 已探索区域残留可见。"""
         fog_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        fog_surface.fill((0, 0, 0, 0))
-        
+
         player_pos = self.player.get_pixel_pos()
-        light_radius_px = self.player.light_radius * TILE_SIZE
+        light_radius_px = int(self.player.light_radius * TILE_SIZE)
         center_x = int(player_pos[0] + self.camera_offset[0])
         center_y = int(player_pos[1] + self.camera_offset[1])
-        
+        enhanced = bool(getattr(self.player, 'is_enhanced_light', lambda: False)())
+
+        # 先铺已探索 / 未探索底雾
+        ox, oy = self.camera_offset
         for y in range(self.game_map.height):
             for x in range(self.game_map.width):
-                rect = pygame.Rect(
-                    x * TILE_SIZE + self.camera_offset[0],
-                    y * TILE_SIZE + self.camera_offset[1],
-                    TILE_SIZE, TILE_SIZE
-                )
-                
-                grid_pixel_x = x * TILE_SIZE + TILE_SIZE // 2 + self.camera_offset[0]
-                grid_pixel_y = y * TILE_SIZE + TILE_SIZE // 2 + self.camera_offset[1]
-                dist = math.sqrt((grid_pixel_x - center_x)**2 + (grid_pixel_y - center_y)**2)
-                
-                in_light = dist <= light_radius_px
-                is_explored = self.visibility_system.explored[y][x]
-                
-                if in_light:
-                    darkness = int(100 * (dist / light_radius_px))
-                    darkness = max(0, min(40, darkness))
-                    pygame.draw.rect(fog_surface, (0, 0, 0, darkness), rect)
-                elif is_explored:
-                    pygame.draw.rect(fog_surface, (0, 0, 0, 120), rect)
+                rect = pygame.Rect(x * TILE_SIZE + ox, y * TILE_SIZE + oy, TILE_SIZE, TILE_SIZE)
+                if self.visibility_system.explored[y][x]:
+                    pygame.draw.rect(fog_surface, (6, 8, 14, 150), rect)
                 else:
-                    pygame.draw.rect(fog_surface, (0, 0, 0, 250), rect)
-        
+                    pygame.draw.rect(fog_surface, (2, 3, 6, 245), rect)
+
+        # 径向柔光挖空
+        if light_radius_px != self._light_mask_cache_r or self._light_mask is None:
+            self._light_mask = T.cached_light_mask(light_radius_px)
+            self._light_mask_cache_r = light_radius_px
+
+        fog_surface.blit(
+            self._light_mask,
+            (center_x - light_radius_px, center_y - light_radius_px),
+            special_flags=pygame.BLEND_RGBA_SUB,
+        )
+
+        # 强化光源时叠一层暖色光晕
+        if enhanced:
+            warm = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            glow_r = light_radius_px
+            warm_mask = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+            for i in range(8, 0, -1):
+                a = int(28 * (i / 8))
+                pygame.draw.circle(
+                    warm_mask, (*T.LIGHT_ACTIVE, a),
+                    (glow_r, glow_r), int(glow_r * i / 8),
+                )
+            warm.blit(warm_mask, (center_x - glow_r, center_y - glow_r))
+            self.screen.blit(warm, (0, 0))
+
         self.screen.blit(fog_surface, (0, 0))
-    
+
     def _render_menu_v8(self):
-        """V8: 中文菜单"""
-        self.screen.fill(COLOR_BLACK)
-        
-        try:
-            font_large = pygame.font.SysFont("simhei", 64)
-            font_medium = pygame.font.SysFont("simhei", 36)
-            font_small = pygame.font.SysFont("simhei", 28)
-            font_tiny = pygame.font.SysFont("simhei", 22)
-        except:
-            font_large = pygame.font.Font(None, 64)
-            font_medium = pygame.font.Font(None, 36)
-            font_small = pygame.font.Font(None, 28)
-            font_tiny = pygame.font.Font(None, 22)
-        
-        title = font_large.render("开关猎杀 v8.0", True, COLOR_GOLD)
-        subtitle = font_medium.render("网格对齐DQN训练", True, COLOR_ORANGE)
-        
-        self.screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, 150))
-        self.screen.blit(subtitle, (SCREEN_WIDTH//2 - subtitle.get_width()//2, 220))
-        
-        option_y_start = 320
-        option_spacing = 50
-        
+        """氛围化主菜单"""
+        T.draw_menu_ambiance(self.screen, self._ui_time)
+
+        title_font = T.get_font(68, bold=True)
+        sub_font = T.get_font(26)
+        opt_font = T.get_font(28)
+        hint_font = T.get_font(20)
+
+        # 标题光晕
+        T.draw_text_centered(
+            self.screen, "开关猎杀", title_font, T.TEXT_TITLE,
+            (SCREEN_WIDTH // 2, 150),
+        )
+        T.draw_text_centered(
+            self.screen, "SWITCH HUNT", sub_font, T.ACCENT_WARM_DIM,
+            (SCREEN_WIDTH // 2, 210), shadow=False,
+        )
+        T.draw_text_centered(
+            self.screen, "黑暗迷宫 · 开灯定身 · 夺宝逃生", T.get_font(22), T.TEXT_SECONDARY,
+            (SCREEN_WIDTH // 2, 250), shadow=False,
+        )
+
+        option_y_start = 310
+        option_spacing = 54
+        bar_w, bar_h = 420, 44
+
         for i, option in enumerate(self.menu_options):
             y = option_y_start + i * option_spacing
-            
-            if i == self.menu_selected:
-                color = COLOR_YELLOW
-                prefix = "> "
-                pygame.draw.rect(self.screen, (50, 50, 70), 
-                               (SCREEN_WIDTH//2 - 200, y - 10, 400, 40), border_radius=5)
+            selected = i == self.menu_selected
+            bar = pygame.Rect(SCREEN_WIDTH // 2 - bar_w // 2, y - 8, bar_w, bar_h)
+
+            if selected:
+                pulse = 0.5 + 0.5 * math.sin(self._ui_time * 4)
+                fill_a = int(160 + 40 * pulse)
+                T.draw_panel(
+                    self.screen, bar,
+                    fill=(*T.BG_PANEL, fill_a),
+                    border=T.ACCENT_WARM,
+                    radius=10,
+                    border_width=2,
+                )
+                # 左侧琥珀指示条
+                pygame.draw.rect(
+                    self.screen, T.ACCENT_WARM,
+                    pygame.Rect(bar.left + 8, bar.top + 8, 4, bar_h - 16),
+                    border_radius=2,
+                )
+                color = T.ACCENT_GOLD
             else:
-                color = COLOR_WHITE
-                prefix = "  "
-            
+                T.draw_panel(
+                    self.screen, bar,
+                    fill=(14, 18, 28, 120),
+                    border=(40, 50, 68),
+                    radius=10,
+                )
+                color = T.TEXT_PRIMARY
+
+            label = option
             if i == 1:
-                status = "[开启]" if self.ui_system.cheat_mode else "[关闭]"
-                text = font_small.render(f"{prefix}{option} {status}", True,
-                                        COLOR_GREEN if self.ui_system.cheat_mode else color)
+                on = self.ui_system.cheat_mode
+                label = f"{option}  {'开' if on else '关'}"
+                if on:
+                    color = T.ACCENT_SAFE if selected else T.ACCENT_SAFE
             elif i == 2:
-                status = "[开启]" if self.player_ai_enabled else "[关闭]"
-                text = font_small.render(f"{prefix}{option} {status}", True,
-                                        COLOR_CYAN if self.player_ai_enabled else color)
+                on = self.player_ai_enabled
+                label = f"{option}  {'开' if on else '关'}"
+                if on:
+                    color = T.ACCENT_INFO
             elif i == 3:
-                snd_on = self.sound.enabled
-                status = "[开启]" if snd_on else "[关闭]"
-                text = font_small.render(f"{prefix}{option} {status}", True,
-                                        COLOR_ORANGE if snd_on else color)
-            else:
-                text = font_small.render(f"{prefix}{option}", True, color)
+                on = self.sound.enabled
+                label = f"{option}  {'开' if on else '关'}"
+                if on and selected:
+                    color = T.ACCENT_WARM
 
-            self.screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, y))
+            text = opt_font.render(label, True, color)
+            self.screen.blit(text, text.get_rect(center=bar.center))
 
-        hint_text = font_tiny.render("上下选择 | Enter确认 | F1作弊 | F2AI | F4音效 | ESC退出", True, COLOR_GRAY)
-        self.screen.blit(hint_text, (SCREEN_WIDTH//2 - hint_text.get_width()//2, 550))
-    
+        T.draw_text_centered(
+            self.screen,
+            "↑↓ 选择   Enter 确认   ESC 退出",
+            hint_font, T.TEXT_MUTED,
+            (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 48),
+            shadow=False,
+        )
+
     def _render_hud_v8(self):
-        """V8: 中文HUD"""
-        try:
-            font = pygame.font.SysFont("simhei", 24)
-            font_small = pygame.font.SysFont("simhei", 20)
-        except:
-            font = pygame.font.Font(None, 24)
-            font_small = pygame.font.Font(None, 20)
-        
-        treasure_text = f"宝藏: {self.treasures_collected}/{TREASURE_COUNT}"
-        self.screen.blit(font.render(treasure_text, True, COLOR_GOLD), (20, 20))
-        
+        """面板化 HUD"""
+        font = T.get_font(22)
+        small = T.get_font(18)
+
+        panel = pygame.Rect(14, 12, 280, 96)
+        T.draw_panel(self.screen, panel, fill=(12, 16, 26, 200), border=T.BG_PANEL_EDGE, radius=12)
+
+        # 宝藏
+        treasure_label = font.render("宝藏", True, T.TEXT_SECONDARY)
+        self.screen.blit(treasure_label, (28, 22))
+        for i in range(TREASURE_COUNT):
+            lit = i < self.treasures_collected
+            T.draw_treasure_icon(self.screen, 90 + i * 22, 34, size=7, lit=lit)
+        count = small.render(f"{self.treasures_collected}/{TREASURE_COUNT}", True, T.ACCENT_GOLD)
+        self.screen.blit(count, (90 + TREASURE_COUNT * 22 + 8, 26))
+
+        # 光源
         if isinstance(self.player, PlayerV8):
             p = self.player
+            light_label = font.render("光源", True, T.TEXT_SECONDARY)
+            self.screen.blit(light_label, (28, 58))
+
+            for i in range(p.light_charges_max):
+                T.draw_lamp_icon(self.screen, 90 + i * 26, 70, lit=i < p.light_charges)
+
             if p.light_state == LightState.ACTIVE:
-                text = f"光源: 激活中 {p.light_active_timer:.1f}秒"
-                color = COLOR_ORANGE
+                status = f"激活 {p.light_active_timer:.1f}s"
+                color = T.ACCENT_WARM
             elif p.light_state == LightState.COOLDOWN:
-                text = f"光源: 冷却中 {p.light_cooldown_timer:.1f}秒"
-                color = COLOR_YELLOW
+                status = f"冷却 {p.light_cooldown_timer:.1f}s"
+                color = T.ACCENT_GOLD
             else:
-                text = f"光源次数: {p.light_charges}/{p.light_charges_max}"
-                color = COLOR_GREEN if p.light_charges > 0 else COLOR_RED
-            
-            self.screen.blit(font.render(text, True, color), (20, 50))
-            
+                status = f"{p.light_charges}/{p.light_charges_max}"
+                color = T.ACCENT_SAFE if p.light_charges > 0 else T.ACCENT_DANGER
+
+            status_s = small.render(status, True, color)
+            self.screen.blit(status_s, (90 + p.light_charges_max * 26 + 10, 62))
+
             if p.ai_enabled:
-                ai_text = font.render("[AI自动]", True, COLOR_CYAN)
-                self.screen.blit(ai_text, (20, 80))
-        
+                badge = pygame.Rect(SCREEN_WIDTH - 118, 14, 104, 28)
+                T.draw_panel(self.screen, badge, fill=(*T.ACCENT_INFO, 50), border=T.ACCENT_INFO, radius=8)
+                T.draw_text_centered(
+                    self.screen, "AI 自动", small, T.ACCENT_INFO,
+                    badge.center, shadow=False,
+                )
+
         if self.ui_system.cheat_mode:
-            cheat_text = font_small.render("[作弊模式]", True, COLOR_RED)
-            self.screen.blit(cheat_text, (SCREEN_WIDTH - 120, 20))
-    
+            badge = pygame.Rect(SCREEN_WIDTH - 118, 50 if getattr(self.player, 'ai_enabled', False) else 14, 104, 28)
+            T.draw_panel(self.screen, badge, fill=(*T.ACCENT_DANGER, 50), border=T.ACCENT_DANGER, radius=8)
+            T.draw_text_centered(
+                self.screen, "作弊模式", small, T.ACCENT_DANGER,
+                badge.center, shadow=False,
+            )
+
     def _render_pause_v8(self):
-        """V8: 中文暂停界面"""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        self.screen.blit(overlay, (0, 0))
-        
-        try:
-            font = pygame.font.SysFont("simhei", 48)
-            font_small = pygame.font.SysFont("simhei", 28)
-        except:
-            font = pygame.font.Font(None, 48)
-            font_small = pygame.font.Font(None, 28)
-        
-        text = font.render("游戏暂停", True, COLOR_WHITE)
-        self.screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT//2 - 30))
-        
-        hint = font_small.render("P/ESC继续 | Enter返回菜单", True, COLOR_GRAY)
-        self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, SCREEN_HEIGHT//2 + 30))
-    
+        """暂停界面"""
+        T.draw_overlay_card(
+            self.screen,
+            "游戏暂停",
+            "P / ESC 继续游戏",
+            T.TEXT_PRIMARY,
+            hints=["Enter 返回主菜单"],
+        )
+
     def _render_game_over_v8(self):
-        """V8: 中文游戏结束"""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
-        self.screen.blit(overlay, (0, 0))
-        
-        try:
-            font = pygame.font.SysFont("simhei", 56)
-            font_small = pygame.font.SysFont("simhei", 28)
-        except:
-            font = pygame.font.Font(None, 56)
-            font_small = pygame.font.Font(None, 28)
-        
-        text = font.render("游戏失败", True, COLOR_RED)
-        self.screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT//2 - 40))
-        
-        hint = font_small.render("Enter重新开始 | ESC返回菜单", True, COLOR_WHITE)
-        self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, SCREEN_HEIGHT//2 + 20))
-    
+        """失败界面"""
+        collected = f"已收集宝藏  {self.treasures_collected}/{TREASURE_COUNT}"
+        T.draw_overlay_card(
+            self.screen,
+            "猎杀失败",
+            collected,
+            T.ACCENT_DANGER,
+            hints=["Enter 重新开始", "ESC 返回主菜单"],
+        )
+
     def _render_victory_v8(self):
-        """V8: 中文胜利界面"""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
-        self.screen.blit(overlay, (0, 0))
-        
-        try:
-            font = pygame.font.SysFont("simhei", 56)
-            font_small = pygame.font.SysFont("simhei", 28)
-        except:
-            font = pygame.font.Font(None, 56)
-            font_small = pygame.font.Font(None, 28)
-        
-        text = font.render("恭喜通关!", True, COLOR_GOLD)
-        self.screen.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT//2 - 40))
-        
-        hint = font_small.render("Enter重新开始 | ESC返回菜单", True, COLOR_WHITE)
-        self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, SCREEN_HEIGHT//2 + 20))
+        """胜利界面"""
+        T.draw_overlay_card(
+            self.screen,
+            "成功逃脱",
+            "你夺回了全部宝藏",
+            T.ACCENT_GOLD,
+            hints=["Enter 再来一局", "ESC 返回主菜单"],
+        )
 
 
 def main():
     """V8主函数"""
     print("=" * 60)
-    print("开关猎杀 v8.0 - 网格对齐DQN训练")
+    print("开关猎杀 — Switch Hunt")
     print("=" * 60)
     print("操作说明:")
     print("  WASD/方向键: 移动")
     print("  空格: 手动激活强化光源（需自行判断时机）")
     print("  P: 暂停 | ESC: 菜单")
     print("  F1: 作弊模式 | F2: AI演示 | F3: 显示A*路径 | F4: 音效/配乐")
-    print("提示: 鬼只在光源激活时可见，保存光源次数很重要！")
+    print("提示: 进入光源范围的鬼会显形；强化光源可定身它们。")
     print("=" * 60)
-    
+
     game = GameV8()
     game.run()
 

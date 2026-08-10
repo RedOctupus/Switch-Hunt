@@ -214,16 +214,39 @@ class Player:
             screen: Pygame屏幕表面
             camera_offset: 相机偏移量
         """
+        from switch_hunt.game import theme as T
+
         screen_x = int(self.pos[0] + camera_offset[0])
         screen_y = int(self.pos[1] + camera_offset[1])
+        enhanced = self.is_enhanced_light()
 
-        # 绘制玩家圆形
-        pygame.draw.circle(screen, COLOR_BLUE, (screen_x, screen_y), self.radius)
+        # 脚下暖光 / 强化时更亮
+        glow_color = T.LIGHT_ACTIVE if enhanced else T.LIGHT_WARM
+        T.draw_soft_glow(
+            screen, (screen_x, screen_y),
+            self.radius + (18 if enhanced else 10),
+            glow_color,
+            strength=0.45 if enhanced else 0.28,
+            rings=8,
+        )
 
-        # 绘制光源指示器（外圈）
-        light_color = COLOR_ORANGE if self.is_enhanced_light() else COLOR_YELLOW
-        light_radius_px = self.light_radius * TILE_SIZE
-        pygame.draw.circle(screen, light_color, (screen_x, screen_y), light_radius_px, 2)
+        # 身体：外圈 + 主体 + 高光
+        pygame.draw.circle(screen, T.PLAYER_OUTLINE, (screen_x, screen_y), self.radius + 2)
+        pygame.draw.circle(screen, T.PLAYER_BODY, (screen_x, screen_y), self.radius)
+        pygame.draw.circle(
+            screen, T.PLAYER_CORE,
+            (screen_x - self.radius // 3, screen_y - self.radius // 3),
+            max(3, self.radius // 3),
+        )
+
+        # 视野边缘提示环（虚线感：每隔一段画弧）
+        light_color = T.ACCENT_WARM if enhanced else T.ACCENT_GOLD
+        light_radius_px = int(self.light_radius * TILE_SIZE)
+        ring = pygame.Surface((light_radius_px * 2 + 4, light_radius_px * 2 + 4), pygame.SRCALPHA)
+        cx = cy = light_radius_px + 2
+        alpha = 160 if enhanced else 90
+        pygame.draw.circle(ring, (*light_color, alpha), (cx, cy), light_radius_px, 2)
+        screen.blit(ring, (screen_x - cx, screen_y - cy))
 
 
 # =============================================================================

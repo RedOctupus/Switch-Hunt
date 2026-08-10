@@ -33,25 +33,25 @@ STATE_CHANNELS = 7  # V7: 7通道（含光源CD状态）        # v6.2: 增加�
 STATE_SIZE = 21           # 状态矩阵大小（21×21）
 ACTION_SPACE = 4          # 动作空间大小（上、下、左、右）
 
-# 颜色定义
+# 颜色定义（兼容旧代码；局内精修色见 game.theme）
 COLOR_BLACK = (0, 0, 0)
 COLOR_WHITE = (255, 255, 255)
 COLOR_GRAY = (128, 128, 128)
 COLOR_DARK_GRAY = (64, 64, 64)
 COLOR_LIGHT_GRAY = (100, 100, 100)
-COLOR_YELLOW = (255, 255, 0)
-COLOR_BLUE = (0, 100, 255)
-COLOR_GREEN = (0, 255, 0)
-COLOR_RED = (255, 0, 0)
-COLOR_ORANGE = (255, 165, 0)
-COLOR_GOLD = (255, 215, 0)
-COLOR_CYAN = (0, 255, 255)
+COLOR_YELLOW = (255, 200, 80)
+COLOR_BLUE = (70, 150, 255)
+COLOR_GREEN = (72, 196, 140)
+COLOR_RED = (220, 64, 72)
+COLOR_ORANGE = (255, 160, 60)
+COLOR_GOLD = (242, 201, 76)
+COLOR_CYAN = (88, 196, 210)
 
 # 墙壁颜色
-COLOR_WALL = (60, 60, 80)      # 墙壁填充色
-COLOR_WALL_BORDER = (100, 100, 120)  # 墙壁边框色
-COLOR_FLOOR = (80, 80, 100)    # 地板颜色（调亮以便在迷雾中可见）
+COLOR_WALL = (58, 72, 92)
+COLOR_WALL_BORDER = (78, 96, 118)
+COLOR_FLOOR = (22, 26, 36)
 
 # 鬼颜色
-COLOR_GHOST_NORMAL = (255, 100, 100)   # 鬼正常状态颜色
-COLOR_GHOST_STUNNED = (100, 100, 255)  # 鬼定身状态颜色
+COLOR_GHOST_NORMAL = (210, 48, 58)
+COLOR_GHOST_STUNNED = (90, 140, 255)

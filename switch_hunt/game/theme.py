@@ -1,0 +1,277 @@
+"""统一视觉主题：配色、字体缓存、通用绘制工具。"""
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Tuple, Optional, List
+
+import math
+import pygame
+
+# ---------------------------------------------------------------------------
+# 调色板 — 深夜迷宫 + 暖琥珀光源
+# ---------------------------------------------------------------------------
+BG_DEEP = (8, 10, 16)
+BG_MID = (14, 18, 28)
+BG_PANEL = (18, 24, 36)
+BG_PANEL_EDGE = (48, 62, 82)
+
+WALL_FILL = (58, 72, 92)
+WALL_TOP = (78, 96, 118)
+WALL_EDGE = (36, 44, 58)
+FLOOR_A = (22, 26, 36)
+FLOOR_B = (26, 30, 42)
+FLOOR_LINE = (32, 38, 52)
+
+ACCENT_WARM = (255, 176, 64)       # 琥珀主强调
+ACCENT_WARM_DIM = (200, 130, 40)
+ACCENT_GOLD = (242, 201, 76)
+ACCENT_DANGER = (220, 64, 72)
+ACCENT_SAFE = (72, 196, 140)
+ACCENT_INFO = (88, 196, 210)
+ACCENT_STUN = (110, 168, 255)
+
+TEXT_PRIMARY = (236, 240, 248)
+TEXT_SECONDARY = (148, 160, 180)
+TEXT_MUTED = (96, 108, 128)
+TEXT_TITLE = (255, 210, 120)
+
+PLAYER_BODY = (70, 150, 255)
+PLAYER_CORE = (180, 220, 255)
+PLAYER_OUTLINE = (40, 90, 180)
+GHOST_BODY = (210, 48, 58)
+GHOST_CORE = (255, 120, 110)
+GHOST_OUTLINE = (255, 200, 200)
+GHOST_STUN_BODY = (90, 140, 255)
+GHOST_STUN_CORE = (180, 210, 255)
+TREASURE_CORE = (255, 220, 90)
+TREASURE_EDGE = (255, 170, 40)
+TREASURE_GLOW = (255, 200, 80)
+
+LIGHT_WARM = (255, 200, 120)
+LIGHT_ACTIVE = (255, 140, 50)
+
+Color = Tuple[int, int, int]
+ColorA = Tuple[int, int, int, int]
+
+
+def lerp_color(a: Color, b: Color, t: float) -> Color:
+    t = max(0.0, min(1.0, t))
+    return (
+        int(a[0] + (b[0] - a[0]) * t),
+        int(a[1] + (b[1] - a[1]) * t),
+        int(a[2] + (b[2] - a[2]) * t),
+    )
+
+
+def with_alpha(color: Color, alpha: int) -> ColorA:
+    return (color[0], color[1], color[2], max(0, min(255, alpha)))
+
+
+@lru_cache(maxsize=32)
+def get_font(size: int, bold: bool = False) -> pygame.font.Font:
+    """优先中文字体，失败回退默认字体。"""
+    candidates = ("microsoftyahei", "simhei", "noto sans cjk sc", "segoe ui")
+    for name in candidates:
+        try:
+            font = pygame.font.SysFont(name, size, bold=bold)
+            # SysFont 在找不到时也可能返回默认字体，简单探测一下
+            if font is not None:
+                return font
+        except Exception:
+            continue
+    return pygame.font.Font(None, size)
+
+
+def draw_vertical_gradient(
+    surface: pygame.Surface,
+    top: Color,
+    bottom: Color,
+    rect: Optional[pygame.Rect] = None,
+) -> None:
+    """绘制纵向渐变。"""
+    target = rect or surface.get_rect()
+    h = max(target.height, 1)
+    for y in range(target.height):
+        c = lerp_color(top, bottom, y / h)
+        pygame.draw.line(
+            surface, c,
+            (target.left, target.top + y),
+            (target.right - 1, target.top + y),
+        )
+
+
+def draw_panel(
+    surface: pygame.Surface,
+    rect: pygame.Rect,
+    fill: ColorA = (18, 24, 36, 210),
+    border: Color = BG_PANEL_EDGE,
+    radius: int = 12,
+    border_width: int = 1,
+) -> None:
+    """半透明圆角面板。"""
+    panel = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(panel, fill, panel.get_rect(), border_radius=radius)
+    if border_width > 0:
+        pygame.draw.rect(panel, border, panel.get_rect(), border_width, border_radius=radius)
+    surface.blit(panel, rect.topleft)
+
+
+def draw_text_centered(
+    surface: pygame.Surface,
+    text: str,
+    font: pygame.font.Font,
+    color: Color,
+    center: Tuple[int, int],
+    shadow: bool = True,
+    shadow_color: Color = (0, 0, 0),
+) -> pygame.Rect:
+    """居中绘制文字，可选阴影。"""
+    rendered = font.render(text, True, color)
+    rect = rendered.get_rect(center=center)
+    if shadow:
+        sh = font.render(text, True, shadow_color)
+        surface.blit(sh, (rect.x + 2, rect.y + 2))
+    surface.blit(rendered, rect)
+    return rect
+
+
+def draw_soft_glow(
+    surface: pygame.Surface,
+    center: Tuple[int, int],
+    radius: int,
+    color: Color,
+    strength: float = 0.55,
+    rings: int = 10,
+) -> None:
+    """多层半透明圆模拟柔光。"""
+    if radius <= 0:
+        return
+    glow = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+    cx = cy = radius
+    for i in range(rings, 0, -1):
+        t = i / rings
+        a = int(255 * strength * (1.0 - t) ** 2)
+        r = int(radius * t)
+        if r > 0 and a > 0:
+            pygame.draw.circle(glow, with_alpha(color, a), (cx, cy), r)
+    surface.blit(glow, (center[0] - radius, center[1] - radius))
+
+
+def make_radial_light_mask(radius: int, soft_edge: float = 0.55) -> pygame.Surface:
+    """生成径向光照遮罩（白=清除迷雾）。缓存友好：按半径生成。"""
+    size = max(radius * 2, 2)
+    mask = pygame.Surface((size, size), pygame.SRCALPHA)
+    cx = cy = radius
+    inner = int(radius * (1.0 - soft_edge))
+    for r in range(radius, 0, -1):
+        if r <= inner:
+            alpha = 255
+        else:
+            t = (r - inner) / max(radius - inner, 1)
+            alpha = int(255 * (1.0 - t) ** 1.6)
+        pygame.draw.circle(mask, (255, 255, 255, alpha), (cx, cy), r)
+    return mask
+
+
+@lru_cache(maxsize=16)
+def cached_light_mask(radius: int) -> pygame.Surface:
+    return make_radial_light_mask(radius)
+
+
+def draw_menu_ambiance(surface: pygame.Surface, t: float) -> None:
+    """主菜单背景氛围：渐变 + 暗迷宫剪影 + 漂浮光点。"""
+    w, h = surface.get_size()
+    draw_vertical_gradient(surface, BG_DEEP, (16, 22, 38))
+
+    # 远景迷宫网格剪影
+    tile = 40
+    maze = pygame.Surface((w, h), pygame.SRCALPHA)
+    for gy in range(0, h, tile):
+        for gx in range(0, w, tile):
+            # 伪随机墙块（确定性）
+            n = ((gx * 37 + gy * 91) ^ 0xA5) % 7
+            if n < 3:
+                shade = 18 + (n * 6)
+                pygame.draw.rect(
+                    maze, (shade, shade + 4, shade + 12, 55),
+                    pygame.Rect(gx + 2, gy + 2, tile - 4, tile - 4),
+                    border_radius=4,
+                )
+    surface.blit(maze, (0, 0))
+
+    # 中央暖光脉冲
+    pulse = 0.5 + 0.5 * math.sin(t * 1.4)
+    glow_r = int(180 + 40 * pulse)
+    draw_soft_glow(surface, (w // 2, int(h * 0.28)), glow_r, ACCENT_WARM, strength=0.18 + 0.08 * pulse, rings=14)
+
+    # 漂浮微尘
+    for i in range(18):
+        seed = i * 97.3
+        x = (math.sin(t * 0.35 + seed) * 0.5 + 0.5) * w
+        y = (math.cos(t * 0.28 + seed * 1.3) * 0.5 + 0.5) * h
+        a = int(40 + 50 * (0.5 + 0.5 * math.sin(t * 2 + seed)))
+        pygame.draw.circle(surface, with_alpha(ACCENT_GOLD, a), (int(x), int(y)), 2)
+
+
+def draw_overlay_card(
+    surface: pygame.Surface,
+    title: str,
+    subtitle: str,
+    title_color: Color,
+    hints: Optional[List[str]] = None,
+) -> None:
+    """暂停/胜负等居中卡片。"""
+    w, h = surface.get_size()
+    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+    overlay.fill((4, 6, 12, 190))
+    surface.blit(overlay, (0, 0))
+
+    card_w, card_h = 520, 220 if not hints else 260
+    card = pygame.Rect((w - card_w) // 2, (h - card_h) // 2, card_w, card_h)
+    draw_panel(surface, card, fill=(16, 22, 34, 230), border=BG_PANEL_EDGE, radius=16)
+
+    # 顶部装饰线
+    pygame.draw.line(
+        surface, title_color,
+        (card.left + 40, card.top + 28),
+        (card.right - 40, card.top + 28),
+        2,
+    )
+
+    title_font = get_font(52, bold=True)
+    sub_font = get_font(24)
+    draw_text_centered(surface, title, title_font, title_color, (w // 2, card.centery - 20))
+    draw_text_centered(surface, subtitle, sub_font, TEXT_SECONDARY, (w // 2, card.centery + 40), shadow=False)
+
+    if hints:
+        hint_font = get_font(20)
+        for i, line in enumerate(hints):
+            draw_text_centered(
+                surface, line, hint_font, TEXT_MUTED,
+                (w // 2, card.bottom - 36 + i * 22), shadow=False,
+            )
+
+
+def draw_treasure_icon(surface: pygame.Surface, x: int, y: int, size: int = 8, lit: bool = True) -> None:
+    """HUD 用小菱形宝藏图标。"""
+    color = TREASURE_CORE if lit else TEXT_MUTED
+    edge = TREASURE_EDGE if lit else TEXT_MUTED
+    points = [
+        (x, y - size),
+        (x + size, y),
+        (x, y + size),
+        (x - size, y),
+    ]
+    pygame.draw.polygon(surface, color, points)
+    pygame.draw.polygon(surface, edge, points, 1)
+
+
+def draw_lamp_icon(surface: pygame.Surface, x: int, y: int, lit: bool = True, size: int = 7) -> None:
+    """HUD 用灯泡/光源次数图标。"""
+    body = ACCENT_WARM if lit else TEXT_MUTED
+    if lit:
+        glow = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
+        pygame.draw.circle(glow, with_alpha(ACCENT_GOLD, 90), (size * 2, size * 2), size + 4)
+        surface.blit(glow, (x - size * 2, y - 2 - size * 2))
+    pygame.draw.circle(surface, body, (x, y - 2), size)
+    pygame.draw.rect(surface, body, (x - 3, y + 3, 6, 5), border_radius=1)
