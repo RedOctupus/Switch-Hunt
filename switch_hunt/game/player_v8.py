@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import os
 import random
 from typing import Optional, List, Tuple
 
@@ -82,7 +83,7 @@ class PlayerV8(Player):
         if self.light_state == LightState.ACTIVE:
             self.light_active_timer -= dt
             self.light_mode = LightMode.ENHANCED
-            self.light_radius = LIGHT_SYSTEM.get('enhanced_radius', 3)
+            self.light_radius = LIGHT_SYSTEM.get('enhanced_radius', 5)
             
             if self.light_active_timer <= 0:
                 self.light_state = LightState.COOLDOWN
@@ -112,7 +113,7 @@ class PlayerV8(Player):
                 self.light_state = LightState.ACTIVE
                 self.light_active_timer = LIGHT_SYSTEM['active_duration']
                 self.light_mode = LightMode.ENHANCED
-                self.light_radius = LIGHT_SYSTEM.get('enhanced_radius', 3)
+                self.light_radius = LIGHT_SYSTEM.get('enhanced_radius', 5)
                 # 重置状态
                 self._threat_ghost = None
                 self._is_reacting = False

@@ -192,31 +192,32 @@ class GameV8(GameManager):
                             print(f"[V8] 宝藏! 光源次数重置为 {self.player.light_charges_max}")
     
     def _update_light_stun(self, dt=0.0):
-        """V8.25: 光源定身鬼 — 训练和游戏使用统一规则。
-        鬼进入 enhanced_radius（3格）后持续曝光 stun_exposure_time（1秒）才定身。
-        玩家进入光源范围即被发现，不存在比光源更小的"定身半径"。
+        """光源定身鬼：强化光源半径内持续曝光，满额后定身。
+        曝光进度写入 ghost._stun_exposure，供渲染渐变变蓝。
         """
-        stun_r_px = LIGHT_SYSTEM.get('enhanced_radius', 3) * TILE_SIZE
+        stun_r_px = LIGHT_SYSTEM.get('enhanced_radius', 5) * TILE_SIZE
         exposure_needed = LIGHT_SYSTEM.get('stun_exposure_time', 1.0)
 
         if isinstance(self.player, PlayerV8) and self.player.light_state == LightState.ACTIVE:
             for ghost in self.ghosts:
                 if ghost.state == GhostState.STUNNED:
-                    ghost._stun_exposure = 0.0
+                    # 定身期间保持满曝光，显示完全变蓝
+                    ghost._stun_exposure = exposure_needed
                     continue
                 dist = distance(self.player.pos[0], self.player.pos[1],
                                 ghost.pos[0], ghost.pos[1])
                 if dist <= stun_r_px:
                     ghost._stun_exposure = getattr(ghost, '_stun_exposure', 0.0) + dt
                     if ghost._stun_exposure >= exposure_needed:
-                        ghost._stun_exposure = 0.0
+                        ghost._stun_exposure = exposure_needed
                         ghost.freeze(LIGHT_SYSTEM['stun_duration'] / 1000.0)
                 else:
                     ghost._stun_exposure = 0.0  # 离开范围则重置曝光计时
         else:
             # 光源未激活：清空所有曝光计时
             for ghost in self.ghosts:
-                ghost._stun_exposure = 0.0
+                if ghost.state != GhostState.STUNNED:
+                    ghost._stun_exposure = 0.0
     
     def _check_game_over(self):
         """V8: 检查游戏结束"""
@@ -536,36 +537,37 @@ class GameV8(GameManager):
         self.screen.blit(fog_surface, (0, 0))
 
     def _render_menu_v8(self):
-        """氛围化主菜单"""
+        """氛围化主菜单 + 操作教程"""
         T.draw_menu_ambiance(self.screen, self._ui_time)
 
-        title_font = T.get_font(68, bold=True)
-        sub_font = T.get_font(26)
-        opt_font = T.get_font(28)
-        hint_font = T.get_font(20)
+        title_font = T.get_font(64, bold=True)
+        sub_font = T.get_font(24)
+        opt_font = T.get_font(26)
+        hint_font = T.get_font(18)
 
-        # 标题光晕
+        # 左侧标题与菜单，右侧操作教程
+        left_cx = 300
         T.draw_text_centered(
             self.screen, "开关猎杀", title_font, T.TEXT_TITLE,
-            (SCREEN_WIDTH // 2, 150),
+            (left_cx, 110),
         )
         T.draw_text_centered(
             self.screen, "SWITCH HUNT", sub_font, T.ACCENT_WARM_DIM,
-            (SCREEN_WIDTH // 2, 210), shadow=False,
+            (left_cx, 165), shadow=False,
         )
         T.draw_text_centered(
-            self.screen, "黑暗迷宫 · 开灯定身 · 夺宝逃生", T.get_font(22), T.TEXT_SECONDARY,
-            (SCREEN_WIDTH // 2, 250), shadow=False,
+            self.screen, "黑暗迷宫 · 开灯定身 · 夺宝逃生", T.get_font(20), T.TEXT_SECONDARY,
+            (left_cx, 200), shadow=False,
         )
 
-        option_y_start = 310
-        option_spacing = 54
-        bar_w, bar_h = 420, 44
+        option_y_start = 250
+        option_spacing = 52
+        bar_w, bar_h = 360, 42
 
         for i, option in enumerate(self.menu_options):
             y = option_y_start + i * option_spacing
             selected = i == self.menu_selected
-            bar = pygame.Rect(SCREEN_WIDTH // 2 - bar_w // 2, y - 8, bar_w, bar_h)
+            bar = pygame.Rect(left_cx - bar_w // 2, y - 6, bar_w, bar_h)
 
             if selected:
                 pulse = 0.5 + 0.5 * math.sin(self._ui_time * 4)
@@ -577,7 +579,6 @@ class GameV8(GameManager):
                     radius=10,
                     border_width=2,
                 )
-                # 左侧琥珀指示条
                 pygame.draw.rect(
                     self.screen, T.ACCENT_WARM,
                     pygame.Rect(bar.left + 8, bar.top + 8, 4, bar_h - 16),
@@ -598,7 +599,7 @@ class GameV8(GameManager):
                 on = self.ui_system.cheat_mode
                 label = f"{option}  {'开' if on else '关'}"
                 if on:
-                    color = T.ACCENT_SAFE if selected else T.ACCENT_SAFE
+                    color = T.ACCENT_SAFE
             elif i == 2:
                 on = self.player_ai_enabled
                 label = f"{option}  {'开' if on else '关'}"
@@ -617,12 +618,16 @@ class GameV8(GameManager):
             self.screen,
             "↑↓ 选择   Enter 确认   ESC 退出",
             hint_font, T.TEXT_MUTED,
-            (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 48),
+            (left_cx, SCREEN_HEIGHT - 36),
             shadow=False,
         )
 
+        # 右侧操作教程面板
+        guide = pygame.Rect(560, 120, 430, 520)
+        T.draw_controls_guide(self.screen, guide)
+
     def _render_hud_v8(self):
-        """面板化 HUD"""
+        """面板化 HUD + 底部操作提示"""
         font = T.get_font(22)
         small = T.get_font(18)
 
@@ -676,15 +681,28 @@ class GameV8(GameManager):
                 badge.center, shadow=False,
             )
 
+        T.draw_hud_controls_bar(self.screen)
+
     def _render_pause_v8(self):
-        """暂停界面"""
-        T.draw_overlay_card(
-            self.screen,
-            "游戏暂停",
-            "P / ESC 继续游戏",
-            T.TEXT_PRIMARY,
-            hints=["Enter 返回主菜单"],
+        """暂停界面（含操作回顾）"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((4, 6, 12, 190))
+        self.screen.blit(overlay, (0, 0))
+
+        card = pygame.Rect(80, 70, 420, 200)
+        T.draw_panel(self.screen, card, fill=(16, 22, 34, 230), border=T.BG_PANEL_EDGE, radius=16)
+        T.draw_text_centered(
+            self.screen, "游戏暂停", T.get_font(48, bold=True), T.TEXT_PRIMARY,
+            (card.centerx, card.centery - 24),
         )
+        T.draw_text_centered(
+            self.screen, "P / ESC 继续    Enter 返回菜单", T.get_font(22), T.TEXT_SECONDARY,
+            (card.centerx, card.centery + 36), shadow=False,
+        )
+
+        guide = pygame.Rect(520, 70, 420, 560)
+        T.draw_controls_guide(self.screen, guide, title="操作回顾")
+
 
     def _render_game_over_v8(self):
         """失败界面"""

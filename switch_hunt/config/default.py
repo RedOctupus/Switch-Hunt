@@ -6,7 +6,8 @@ LIGHT_SYSTEM = {
     'active_duration': 3.5,
     'cooldown_duration': 5.0,
     'radius': 3,
-    'enhanced_radius': 3,
+    # 强化光源：更大照射与定身威胁范围（格）
+    'enhanced_radius': 5,
     'ambush_radius': 2,
     'stun_exposure_time': 1.0,
     'stun_duration': 2000,

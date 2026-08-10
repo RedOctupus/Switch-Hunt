@@ -244,6 +244,87 @@ def draw_menu_ambiance(surface: pygame.Surface, t: float) -> None:
         pygame.draw.circle(surface, with_alpha(ACCENT_GOLD, a), (int(x), int(y)), 2)
 
 
+# 操作教程条目：(按键, 说明)
+CONTROL_GUIDE: List[Tuple[str, str]] = [
+    ("WASD / 方向键", "移动"),
+    ("空格", "强化光源(5格)，照射鬼渐变蓝至定身"),
+    ("P", "暂停 / 继续"),
+    ("ESC", "返回菜单"),
+    ("F1", "作弊全图视野"),
+    ("F2", "玩家 AI 演示"),
+    ("F3", "显示鬼寻路路径"),
+    ("F4", "开关音效 / 配乐"),
+]
+
+GAMEPLAY_TIPS: List[str] = [
+    "收集全部宝藏即可通关；被鬼碰到则失败。",
+    "强化光源半径 5 格，照射下的鬼会逐渐变蓝。",
+    "变蓝满格后鬼被定身；拾取宝藏可重置开灯次数。",
+]
+
+
+def draw_controls_guide(
+    surface: pygame.Surface,
+    rect: pygame.Rect,
+    *,
+    title: str = "操作教程",
+    show_tips: bool = True,
+) -> None:
+    """绘制操作教程面板。"""
+    draw_panel(surface, rect, fill=(12, 16, 26, 210), border=BG_PANEL_EDGE, radius=14)
+
+    title_font = get_font(24, bold=True)
+    key_font = get_font(18)
+    tip_font = get_font(16)
+
+    title_surf = title_font.render(title, True, ACCENT_GOLD)
+    surface.blit(title_surf, (rect.left + 18, rect.top + 14))
+    pygame.draw.line(
+        surface, ACCENT_WARM_DIM,
+        (rect.left + 18, rect.top + 44),
+        (rect.right - 18, rect.top + 44),
+        1,
+    )
+
+    y = rect.top + 56
+    col_key_x = rect.left + 20
+    col_desc_x = rect.left + 160
+    for key, desc in CONTROL_GUIDE:
+        key_s = key_font.render(key, True, ACCENT_WARM)
+        desc_s = key_font.render(desc, True, TEXT_PRIMARY)
+        surface.blit(key_s, (col_key_x, y))
+        surface.blit(desc_s, (col_desc_x, y))
+        y += 26
+
+    if show_tips:
+        y += 8
+        pygame.draw.line(
+            surface, (40, 50, 68),
+            (rect.left + 18, y),
+            (rect.right - 18, y),
+            1,
+        )
+        y += 12
+        tip_title = tip_font.render("玩法提示", True, TEXT_SECONDARY)
+        surface.blit(tip_title, (col_key_x, y))
+        y += 22
+        for tip in GAMEPLAY_TIPS:
+            tip_s = tip_font.render(tip, True, TEXT_MUTED)
+            surface.blit(tip_s, (col_key_x, y))
+            y += 20
+
+
+def draw_hud_controls_bar(surface: pygame.Surface) -> None:
+    """局内底部简要操作条。"""
+    w, h = surface.get_size()
+    bar = pygame.Rect(14, h - 42, w - 28, 30)
+    draw_panel(surface, bar, fill=(10, 14, 22, 180), border=(40, 50, 68), radius=8)
+    font = get_font(16)
+    text = "WASD 移动   空格 开灯(5格/渐变蓝)   P 暂停   ESC 菜单   F1 全图   F4 音效"
+    surf = font.render(text, True, TEXT_SECONDARY)
+    surface.blit(surf, surf.get_rect(center=bar.center))
+
+
 def draw_overlay_card(
     surface: pygame.Surface,
     title: str,

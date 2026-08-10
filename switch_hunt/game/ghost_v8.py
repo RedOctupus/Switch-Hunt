@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import math
+import os
+import random
 from typing import Optional, List, Tuple
 
 import numpy as np
@@ -41,6 +43,8 @@ class DQNGhostV8(Ghost):
         self.current_path = []
         self.planned_direction = None
         self.path_update_counter = 0
+        # 强化光源照射累计时间（秒），用于定身判定与变蓝视觉反馈
+        self._stun_exposure = 0.0
         # V8.25: 删除sprint_mode，速度恒为玩家1.2倍，sprint只是奖励结构区分
     
     def update_path(self):
@@ -98,12 +102,12 @@ class DQNGhostV8(Ghost):
                 if 0 <= px < 21 and 0 <= py < 21:
                     state[3, py, px] = 1.0
         
-        # 通道4: 定身危险区（光源激活时的完整定身检测范围）
-        # V8.25: 改用 enhanced_radius（3格）= 与光源范围一致，进入后1秒定身
+        # 通道4: 定身危险区（强化光源激活时，与 enhanced_radius 一致）
+        # 进入后累计曝光，满 stun_exposure_time 后定身
         if self.player and hasattr(self.player, 'light_state'):
             if self.player.light_state == LightState.ACTIVE:
                 px, py = self.player.get_grid_pos()
-                stun_r = LIGHT_SYSTEM.get('enhanced_radius', 3)
+                stun_r = LIGHT_SYSTEM.get('enhanced_radius', 5)
                 for dy in range(-stun_r, stun_r + 1):
                     for dx in range(-stun_r, stun_r + 1):
                         nx, ny = px + dx, py + dy
@@ -231,28 +235,37 @@ class DQNGhostV8(Ghost):
         if self.is_moving:
             self._continue_move(dt)
     
+    def get_exposure_ratio(self) -> float:
+        """照射进度 0~1：用于变蓝反馈；定身时视为满进度。"""
+        if self.state == GhostState.STUNNED:
+            return 1.0
+        needed = LIGHT_SYSTEM.get('stun_exposure_time', 1.0)
+        if needed <= 0:
+            return 0.0
+        return max(0.0, min(1.0, getattr(self, '_stun_exposure', 0.0) / needed))
+
     def render(self, screen, camera_offset=(0, 0)):
-        """V8: 渲染网格对齐的鬼"""
+        """V8: 渲染网格对齐的鬼；照射下按曝光进度由红渐变蓝。"""
         from switch_hunt.game import theme as T
 
         screen_x = int(self.pos[0] + camera_offset[0])
         screen_y = int(self.pos[1] + camera_offset[1])
         stunned = self.state == GhostState.STUNNED
+        t = self.get_exposure_ratio()
 
-        body = T.GHOST_STUN_BODY if stunned else T.GHOST_BODY
-        core = T.GHOST_STUN_CORE if stunned else T.GHOST_CORE
-        outline = T.ACCENT_STUN if stunned else T.GHOST_OUTLINE
+        body = T.lerp_color(T.GHOST_BODY, T.GHOST_STUN_BODY, t)
+        core = T.lerp_color(T.GHOST_CORE, T.GHOST_STUN_CORE, t)
+        outline = T.lerp_color(T.GHOST_OUTLINE, T.ACCENT_STUN, t)
 
-        # 外晕：正常血红、定身冰蓝
+        # 外晕：随照射加深冰蓝感
         T.draw_soft_glow(
             screen, (screen_x, screen_y),
-            self.radius + (14 if stunned else 10),
+            self.radius + (14 if stunned or t > 0.6 else 10),
             body,
-            strength=0.4 if stunned else 0.32,
+            strength=0.32 + 0.18 * t,
             rings=8,
         )
 
-        # 幽灵体：略扁椭圆感用双圆叠
         pygame.draw.circle(screen, outline, (screen_x, screen_y), self.radius)
         pygame.draw.circle(screen, body, (screen_x, screen_y), self.radius - 2)
         pygame.draw.circle(
@@ -261,18 +274,29 @@ class DQNGhostV8(Ghost):
             max(4, self.radius // 3),
         )
 
-        # 眼睛
+        # 眼睛：随照射由暗红转为冰白
         eye_y = screen_y - 2
         eye_dx = self.radius // 3
-        eye_r = 3 if not stunned else 2
-        eye_color = (40, 10, 10) if not stunned else (220, 240, 255)
+        eye_r = 2 if stunned else 3
+        eye_color = T.lerp_color((40, 10, 10), (220, 240, 255), t)
         pygame.draw.circle(screen, eye_color, (screen_x - eye_dx, eye_y), eye_r)
         pygame.draw.circle(screen, eye_color, (screen_x + eye_dx, eye_y), eye_r)
-        if not stunned:
+        if t < 0.45:
             pygame.draw.circle(screen, (255, 220, 180), (screen_x - eye_dx + 1, eye_y - 1), 1)
             pygame.draw.circle(screen, (255, 220, 180), (screen_x + eye_dx + 1, eye_y - 1), 1)
 
-        # 定身：冰裂纹短线
+        # 照射进度环：让玩家直观看到定身读条
+        if t > 0.0 and not stunned:
+            ring_r = self.radius + 6
+            # 底环
+            pygame.draw.circle(screen, (40, 50, 70), (screen_x, screen_y), ring_r, 2)
+            # 进度弧（从顶部顺时针）
+            rect = pygame.Rect(screen_x - ring_r, screen_y - ring_r, ring_r * 2, ring_r * 2)
+            start = -math.pi / 2
+            end = start + t * 2 * math.pi
+            pygame.draw.arc(screen, T.ACCENT_STUN, rect, start, end, 3)
+
+        # 定身：冰裂纹
         if stunned:
             for ang in (0.4, 1.2, 2.1, 3.5, 4.8):
                 ex = screen_x + int(math.cos(ang) * (self.radius - 3))
