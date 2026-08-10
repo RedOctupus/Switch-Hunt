@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "switch-hunt"
+version = "8.25"
+description = "开关猎杀 — Pygame 迷宫捉迷藏（可玩版）"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "pygame>=2.5.0",
+  "numpy>=1.24.0",
+  "torch>=2.0.0",
+]
+
+[project.scripts]
+switch-hunt = "switch_hunt.game.app:main"
+
+[tool.setuptools.packages.find]
+include = ["switch_hunt*", "apps*"]

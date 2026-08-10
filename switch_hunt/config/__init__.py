@@ -1,2 +1,2 @@
-"""兼容层：旧配置导入。"""
+"""配置包。"""
 from switch_hunt.config.default import *  # noqa: F401,F403

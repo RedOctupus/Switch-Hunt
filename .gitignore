@@ -3,15 +3,9 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Checkpoints (training intermediate checkpoints)
+# Training artifacts (not used in game-only)
 checkpoints/
-
-# Comparison models (only keep main model)
-comparison model/
-
-# Large log data (keep images and text files)
-logs/**/*.npy
-logs/**/*.pth
+logs/
 
 # IDE
 .vscode/
